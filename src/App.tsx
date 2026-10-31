@@ -16,26 +16,30 @@ import NotificationsPage from './pages/NotificationsPage';
  * 路由表
  * - 公开页：首页、详情、登录、他人主页、排行榜
  * - 受保护页：提问、通知中心（ProtectedRoute 未登录自动跳转 /login）
+ * - basename 跟随 Vite 的 base（开发为 /，GitHub Pages 构建为 /qa-community/）
  */
-const router = createBrowserRouter([
-  {
-    element: <Layout />,
-    children: [
-      { path: '/', element: <HomePage /> },
-      { path: '/login', element: <LoginPage /> },
-      { path: '/question/:id', element: <QuestionDetailPage /> },
-      { path: '/profile/:id', element: <ProfilePage /> },
-      { path: '/leaderboard', element: <LeaderboardPage /> },
-      {
-        element: <ProtectedRoute />,
-        children: [
-          { path: '/ask', element: <AskPage /> },
-          { path: '/notifications', element: <NotificationsPage /> },
-        ],
-      },
-    ],
-  },
-]);
+const router = createBrowserRouter(
+  [
+    {
+      element: <Layout />,
+      children: [
+        { path: '/', element: <HomePage /> },
+        { path: '/login', element: <LoginPage /> },
+        { path: '/question/:id', element: <QuestionDetailPage /> },
+        { path: '/profile/:id', element: <ProfilePage /> },
+        { path: '/leaderboard', element: <LeaderboardPage /> },
+        {
+          element: <ProtectedRoute />,
+          children: [
+            { path: '/ask', element: <AskPage /> },
+            { path: '/notifications', element: <NotificationsPage /> },
+          ],
+        },
+      ],
+    },
+  ],
+  { basename: import.meta.env.BASE_URL.replace(/\/$/, '') || '/' }
+);
 
 export default function App() {
   return (
