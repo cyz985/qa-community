@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Markdown 正文的基础排版（不引入 typography 插件，保持依赖最小） */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+  @apply font-bold mt-4 mb-2;
+}
+.markdown-body h1 {
+  @apply text-xl;
+}
+.markdown-body h2 {
+  @apply text-lg;
+}
+.markdown-body p {
+  @apply my-2 leading-relaxed;
+}
+.markdown-body ul {
+  @apply list-disc pl-6 my-2;
+}
+.markdown-body ol {
+  @apply list-decimal pl-6 my-2;
+}
+.markdown-body code {
+  @apply bg-gray-100 text-pink-600 px-1 rounded text-sm;
+}
+.markdown-body pre {
+  @apply bg-gray-900 text-gray-100 p-3 rounded overflow-x-auto my-3;
+}
+.markdown-body pre code {
+  @apply bg-transparent text-inherit p-0;
+}
+.markdown-body blockquote {
+  @apply border-l-4 border-gray-300 pl-3 text-gray-600 my-2;
+}
+.markdown-body a {
+  @apply text-brand-600 underline;
+}
