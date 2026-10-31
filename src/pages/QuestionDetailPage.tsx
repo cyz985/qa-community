@@ -6,6 +6,7 @@ import Markdown from '../components/Markdown';
 import TagChip from '../components/TagChip';
 import Avatar from '../components/Avatar';
 import VoteButton from '../components/VoteButton';
+import CommentsSection from '../components/CommentsSection';
 import EmptyState, { Loading } from '../components/EmptyState';
 import type { Answer, Question } from '../types/database';
 
@@ -379,6 +380,9 @@ export default function QuestionDetailPage() {
                     </>
                   )}
                 </div>
+
+                {/* 评论区 */}
+                <CommentsSection answerId={answer.id} />
               </article>
             ))}
           </div>

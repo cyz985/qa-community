@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import Avatar from '../components/Avatar';
 import EmptyState, { Loading } from '../components/EmptyState';
-import type { Answer, Profile, Question } from '../types/database';
+import type { Answer, Badge, Profile, Question, UserBadge } from '../types/database';
 
 type Tab = 'questions' | 'answers';
 
@@ -31,6 +31,16 @@ export default function ProfilePage() {
   const [tab, setTab] = useState<Tab>('questions');
   const [loading, setLoading] = useState(true);
 
+  // 关注状态
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [followBusy, setFollowBusy] = useState(false);
+
+  // 徽章：全部定义 + 该用户已解锁的
+  const [allBadges, setAllBadges] = useState<Badge[]>([]);
+  const [userBadges, setUserBadges] = useState<UserBadge[]>([]);
+
   // 编辑资料状态
   const [editing, setEditing] = useState(false);
   const [editUsername, setEditUsername] = useState('');
@@ -40,7 +50,7 @@ export default function ProfilePage() {
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const [profileRes, questionsRes, answersRes] = await Promise.all([
+    const [profileRes, questionsRes, answersRes, badgesRes, userBadgesRes] = await Promise.all([
       supabase.from('qa_profiles').select('*').eq('id', id!).maybeSingle(),
       supabase
         .from('qa_questions')
@@ -52,16 +62,75 @@ export default function ProfilePage() {
         .select('*, question:qa_questions!question_id(id, title)')
         .eq('author_id', id!)
         .order('created_at', { ascending: false }),
+      supabase.from('qa_badges').select('*').order('sort_order', { ascending: true }),
+      supabase
+        .from('qa_user_badges')
+        .select('*, badge:qa_badges!badge_id(*)')
+        .eq('user_id', id!)
+        .order('unlocked_at', { ascending: true }),
     ]);
     setProfile(profileRes.data as Profile | null);
     setQuestions((questionsRes.data as Question[]) ?? []);
     setAnswers((answersRes.data as MyAnswer[]) ?? []);
+    setAllBadges((badgesRes.data as Badge[]) ?? []);
+    setUserBadges((userBadgesRes.data as UserBadge[]) ?? []);
     setLoading(false);
   }, [id]);
+
+  // 关注数据：关注状态（依赖当前登录用户）+ 粉丝/关注数
+  const fetchFollow = useCallback(async () => {
+    const [followersRes, followingRes] = await Promise.all([
+      supabase
+        .from('qa_follows')
+        .select('follower_id', { count: 'exact', head: true })
+        .eq('following_id', id!),
+      supabase
+        .from('qa_follows')
+        .select('following_id', { count: 'exact', head: true })
+        .eq('follower_id', id!),
+    ]);
+    setFollowerCount(followersRes.count ?? 0);
+    setFollowingCount(followingRes.count ?? 0);
+
+    if (user && user.id !== id) {
+      const { data } = await supabase
+        .from('qa_follows')
+        .select('follower_id')
+        .eq('follower_id', user.id)
+        .eq('following_id', id!)
+        .maybeSingle();
+      setIsFollowing(!!data);
+    } else {
+      setIsFollowing(false);
+    }
+  }, [id, user]);
 
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  useEffect(() => {
+    fetchFollow();
+  }, [fetchFollow]);
+
+  /** 关注 / 取消关注 */
+  const toggleFollow = async () => {
+    if (!user || followBusy) return;
+    setFollowBusy(true);
+    if (isFollowing) {
+      await supabase
+        .from('qa_follows')
+        .delete()
+        .eq('follower_id', user.id)
+        .eq('following_id', id!);
+    } else {
+      await supabase
+        .from('qa_follows')
+        .insert({ follower_id: user.id, following_id: id! });
+    }
+    await fetchFollow();
+    setFollowBusy(false);
+  };
 
   const startEdit = () => {
     if (!profile) return;
@@ -149,15 +218,58 @@ export default function ProfilePage() {
                 </span>
               </div>
               <p className="mt-1 text-sm text-gray-500">{profile.bio || '这个人很懒，什么都没有留下'}</p>
-              <p className="mt-1 text-xs text-gray-400">加入于 {formatTime(profile.created_at)}</p>
+              <div className="mt-1 flex items-center gap-3 text-xs text-gray-400">
+                <span>加入于 {formatTime(profile.created_at)}</span>
+                <span>{followerCount} 粉丝</span>
+                <span>{followingCount} 关注</span>
+              </div>
             </div>
-            {isSelf && (
+            {isSelf ? (
               <button onClick={startEdit} className="rounded-lg border px-3 py-1.5 text-sm text-gray-600 hover:border-brand-400 hover:text-brand-600">
                 编辑资料
               </button>
+            ) : (
+              user && (
+                <button
+                  onClick={toggleFollow}
+                  disabled={followBusy}
+                  className={
+                    isFollowing
+                      ? 'rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-red-300 hover:text-red-500'
+                      : 'rounded-lg bg-brand-600 px-3 py-1.5 text-sm text-white hover:bg-brand-700'
+                  }
+                >
+                  {isFollowing ? '已关注' : '+ 关注'}
+                </button>
+              )
             )}
           </div>
         )}
+      </section>
+
+      {/* ===== 徽章墙 ===== */}
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-4 text-lg font-semibold">徽章（{userBadges.length}/{allBadges.length}）</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {allBadges.map((badge) => {
+            const unlocked = userBadges.find((ub) => ub.badge_id === badge.id);
+            return (
+              <div
+                key={badge.id}
+                title={badge.description}
+                className={`rounded-lg border p-3 text-center ${
+                  unlocked ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200 bg-gray-50 opacity-50 grayscale'
+                }`}
+              >
+                <div className="text-2xl">{badge.icon}</div>
+                <div className="mt-1 text-sm font-medium text-gray-800">{badge.name}</div>
+                <div className="mt-0.5 text-xs text-gray-500">
+                  {unlocked ? `解锁于 ${formatTime(unlocked.unlocked_at)}` : `积分达到 ${badge.threshold} 解锁`}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       {/* ===== Tab：TA 的提问 / TA 的回答 ===== */}
