@@ -21,7 +21,7 @@ export default function Navbar() {
       return;
     }
     supabase
-      .from('notifications')
+      .from('qa_notifications')
       .select('id', { count: 'exact', head: true })
       .eq('is_read', false)
       .then(({ count }) => setUnread(count ?? 0));

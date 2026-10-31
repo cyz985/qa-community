@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // 拉取指定用户的资料
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
-      .from('profiles')
+      .from('qa_profiles')
       .select('*')
       .eq('id', userId)
       .single();

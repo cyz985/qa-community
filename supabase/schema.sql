@@ -12,9 +12,9 @@ create extension if not exists pgcrypto;
 -- =====================================================================
 
 -- ---------------------------------------------------------------
--- 1. profiles：用户资料扩展表（主键复用 auth.users.id，不新建用户表）
+-- 1. qa_profiles：用户资料扩展表（主键复用 auth.users.id，不新建用户表）
 -- ---------------------------------------------------------------
-create table public.profiles (
+create table public.qa_profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
   username    text not null,
   avatar_url  text,
@@ -22,19 +22,19 @@ create table public.profiles (
   points      integer not null default 0,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
-  constraint profiles_username_unique unique (username),
-  constraint profiles_username_len check (char_length(username) between 2 and 30)
+  constraint qa_profiles_username_unique unique (username),
+  constraint qa_profiles_username_len check (char_length(username) between 2 and 30)
 );
 
-comment on table public.profiles is '用户资料扩展表，积分/头像/徽章信息，主键关联 auth.users';
-comment on column public.profiles.points is '当前积分，只能由触发器修改，前端只读';
+comment on table public.qa_profiles is '用户资料扩展表，积分/头像/徽章信息，主键关联 auth.users';
+comment on column public.qa_profiles.points is '当前积分，只能由触发器修改，前端只读';
 
 -- ---------------------------------------------------------------
--- 2. questions：问题表
+-- 2. qa_questions：问题表
 -- ---------------------------------------------------------------
-create table public.questions (
+create table public.qa_questions (
   id                 uuid primary key default gen_random_uuid(),
-  author_id          uuid not null references public.profiles(id) on delete cascade,
+  author_id          uuid not null references public.qa_profiles(id) on delete cascade,
   title              text not null,
   content            text not null,
   tags               jsonb not null default '[]'::jsonb,
@@ -48,95 +48,95 @@ create table public.questions (
                      ) stored,
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now(),
-  constraint questions_title_len check (char_length(title) between 5 and 150),
-  constraint questions_content_len check (char_length(content) >= 1),
-  constraint questions_tags_array check (jsonb_typeof(tags) = 'array')
+  constraint qa_questions_title_len check (char_length(title) between 5 and 150),
+  constraint qa_questions_content_len check (char_length(content) >= 1),
+  constraint qa_questions_tags_array check (jsonb_typeof(tags) = 'array')
 );
 
-comment on table public.questions is '问题表，tags 存储标签 JSON 数组';
-comment on column public.questions.hot_score is '热度值 = 浏览 + 2*点赞 + 3*回答，用于热门排序';
+comment on table public.qa_questions is '问题表，tags 存储标签 JSON 数组';
+comment on column public.qa_questions.hot_score is '热度值 = 浏览 + 2*点赞 + 3*回答，用于热门排序';
 
 -- ---------------------------------------------------------------
--- 3. answers：回答表
+-- 3. qa_answers：回答表
 -- ---------------------------------------------------------------
-create table public.answers (
+create table public.qa_answers (
   id          uuid primary key default gen_random_uuid(),
-  question_id uuid not null references public.questions(id) on delete cascade,
-  author_id   uuid not null references public.profiles(id) on delete cascade,
+  question_id uuid not null references public.qa_questions(id) on delete cascade,
+  author_id   uuid not null references public.qa_profiles(id) on delete cascade,
   content     text not null,
   vote_count  integer not null default 0,
   is_accepted boolean not null default false,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
-  constraint answers_content_len check (char_length(content) >= 1)
+  constraint qa_answers_content_len check (char_length(content) >= 1)
 );
 
-comment on table public.answers is '回答表，同一用户可对同一问题多次回答';
+comment on table public.qa_answers is '回答表，同一用户可对同一问题多次回答';
 
 -- 问题表的最佳答案外键（建表后补加，避免循环依赖）
-alter table public.questions
-  add constraint questions_accepted_answer_fk
-  foreign key (accepted_answer_id) references public.answers(id) on delete set null;
+alter table public.qa_questions
+  add constraint qa_questions_accepted_answer_fk
+  foreign key (accepted_answer_id) references public.qa_answers(id) on delete set null;
 
 -- ---------------------------------------------------------------
--- 4. votes：点赞表（问题/回答共用，多态关联）
+-- 4. qa_votes：点赞表（问题/回答共用，多态关联）
 -- ---------------------------------------------------------------
-create table public.votes (
+create table public.qa_votes (
   id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null references public.profiles(id) on delete cascade,
+  user_id     uuid not null references public.qa_profiles(id) on delete cascade,
   target_type text not null,
   target_id   uuid not null,
   created_at  timestamptz not null default now(),
-  constraint votes_target_type check (target_type in ('question', 'answer')),
-  constraint votes_unique_user_target unique (user_id, target_type, target_id)
+  constraint qa_votes_target_type check (target_type in ('question', 'answer')),
+  constraint qa_votes_unique_user_target unique (user_id, target_type, target_id)
 );
 
-comment on table public.votes is '点赞记录，唯一约束保证一个用户对同一目标只能点赞一次';
+comment on table public.qa_votes is '点赞记录，唯一约束保证一个用户对同一目标只能点赞一次';
 
 -- ---------------------------------------------------------------
--- 5. comments：回答的子评论（parent_id 支持多级回复）
+-- 5. qa_comments：回答的子评论（parent_id 支持多级回复）
 -- ---------------------------------------------------------------
-create table public.comments (
+create table public.qa_comments (
   id          uuid primary key default gen_random_uuid(),
-  answer_id   uuid not null references public.answers(id) on delete cascade,
-  author_id   uuid not null references public.profiles(id) on delete cascade,
-  parent_id   uuid references public.comments(id) on delete cascade,
+  answer_id   uuid not null references public.qa_answers(id) on delete cascade,
+  author_id   uuid not null references public.qa_profiles(id) on delete cascade,
+  parent_id   uuid references public.qa_comments(id) on delete cascade,
   content     text not null,
   created_at  timestamptz not null default now(),
-  constraint comments_content_len check (char_length(content) >= 1)
+  constraint qa_comments_content_len check (char_length(content) >= 1)
 );
 
 -- ---------------------------------------------------------------
--- 6. follows：用户关注关系
+-- 6. qa_follows：用户关注关系
 -- ---------------------------------------------------------------
-create table public.follows (
-  follower_id  uuid not null references public.profiles(id) on delete cascade,
-  following_id uuid not null references public.profiles(id) on delete cascade,
+create table public.qa_follows (
+  follower_id  uuid not null references public.qa_profiles(id) on delete cascade,
+  following_id uuid not null references public.qa_profiles(id) on delete cascade,
   created_at   timestamptz not null default now(),
   primary key (follower_id, following_id),
-  constraint follows_no_self check (follower_id <> following_id)
+  constraint qa_follows_no_self check (follower_id <> following_id)
 );
 
 -- ---------------------------------------------------------------
--- 7. notifications：消息通知
+-- 7. qa_notifications：消息通知
 -- ---------------------------------------------------------------
-create table public.notifications (
+create table public.qa_notifications (
   id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null references public.profiles(id) on delete cascade, -- 接收者
-  actor_id    uuid references public.profiles(id) on delete set null,         -- 触发者
+  user_id     uuid not null references public.qa_profiles(id) on delete cascade, -- 接收者
+  actor_id    uuid references public.qa_profiles(id) on delete set null,         -- 触发者
   type        text not null,                                                 -- new_answer / accept / vote
-  question_id uuid references public.questions(id) on delete cascade,
-  answer_id   uuid references public.answers(id) on delete cascade,
+  question_id uuid references public.qa_questions(id) on delete cascade,
+  answer_id   uuid references public.qa_answers(id) on delete cascade,
   content     text not null,
   is_read     boolean not null default false,
   created_at  timestamptz not null default now(),
-  constraint notifications_type check (type in ('new_answer', 'accept', 'vote'))
+  constraint qa_notifications_type check (type in ('new_answer', 'accept', 'vote'))
 );
 
 -- ---------------------------------------------------------------
--- 8. badges：徽章定义
+-- 8. qa_badges：徽章定义
 -- ---------------------------------------------------------------
-create table public.badges (
+create table public.qa_badges (
   id          uuid primary key default gen_random_uuid(),
   code        text not null unique,
   name        text not null,
@@ -145,47 +145,47 @@ create table public.badges (
   threshold   integer not null,
   sort_order  integer not null default 0,
   created_at  timestamptz not null default now(),
-  constraint badges_threshold_nonnegative check (threshold >= 0)
+  constraint qa_badges_threshold_nonnegative check (threshold >= 0)
 );
 
 -- ---------------------------------------------------------------
--- 9. user_badges：用户-徽章关联（由触发器自动写入）
+-- 9. qa_user_badges：用户-徽章关联（由触发器自动写入）
 -- ---------------------------------------------------------------
-create table public.user_badges (
+create table public.qa_user_badges (
   id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null references public.profiles(id) on delete cascade,
-  badge_id    uuid not null references public.badges(id) on delete cascade,
+  user_id     uuid not null references public.qa_profiles(id) on delete cascade,
+  badge_id    uuid not null references public.qa_badges(id) on delete cascade,
   unlocked_at timestamptz not null default now(),
-  constraint user_badges_unique unique (user_id, badge_id)
+  constraint qa_user_badges_unique unique (user_id, badge_id)
 );
 
 -- =====================================================================
 -- 二、索引
 -- =====================================================================
 
-create index questions_created_idx on public.questions (created_at desc);
-create index questions_hot_idx on public.questions (hot_score desc);
-create index questions_solved_idx on public.questions (is_solved, created_at desc);
-create index questions_author_idx on public.questions (author_id, created_at desc);
-create index questions_tags_gin_idx on public.questions using gin (tags jsonb_path_ops);
+create index qa_questions_created_idx on public.qa_questions (created_at desc);
+create index qa_questions_hot_idx on public.qa_questions (hot_score desc);
+create index qa_questions_solved_idx on public.qa_questions (is_solved, created_at desc);
+create index qa_questions_author_idx on public.qa_questions (author_id, created_at desc);
+create index qa_questions_tags_gin_idx on public.qa_questions using gin (tags jsonb_path_ops);
 
-create index answers_question_idx on public.answers (question_id, created_at);
-create index answers_author_idx on public.answers (author_id, created_at desc);
-create unique index answers_one_accepted_idx on public.answers (question_id) where is_accepted;
+create index qa_answers_question_idx on public.qa_answers (question_id, created_at);
+create index qa_answers_author_idx on public.qa_answers (author_id, created_at desc);
+create unique index qa_answers_one_accepted_idx on public.qa_answers (question_id) where is_accepted;
 
-create index votes_target_idx on public.votes (target_type, target_id);
-create index votes_user_idx on public.votes (user_id);
+create index qa_votes_target_idx on public.qa_votes (target_type, target_id);
+create index qa_votes_user_idx on public.qa_votes (user_id);
 
-create index comments_answer_idx on public.comments (answer_id, created_at);
-create index comments_parent_idx on public.comments (parent_id);
-create index comments_author_idx on public.comments (author_id);
+create index qa_comments_answer_idx on public.qa_comments (answer_id, created_at);
+create index qa_comments_parent_idx on public.qa_comments (parent_id);
+create index qa_comments_author_idx on public.qa_comments (author_id);
 
-create index follows_following_idx on public.follows (following_id);
+create index qa_follows_following_idx on public.qa_follows (following_id);
 
-create index notifications_user_idx on public.notifications (user_id, created_at desc);
-create index notifications_unread_idx on public.notifications (user_id, is_read);
+create index qa_notifications_user_idx on public.qa_notifications (user_id, created_at desc);
+create index qa_notifications_unread_idx on public.qa_notifications (user_id, is_read);
 
-create index user_badges_badge_idx on public.user_badges (badge_id);
+create index qa_user_badges_badge_idx on public.qa_user_badges (badge_id);
 
 -- =====================================================================
 -- 三、函数（工具函数 + RPC）
@@ -212,33 +212,33 @@ security definer
 set search_path = public
 as $$
 begin
-  update public.profiles
+  update public.qa_profiles
      set points = points + delta
    where id = target_user;
 end;
 $$;
 
 -- 积分变化后自动解锁徽章
-create or replace function public.unlock_badges()
+create or replace function public.unlock_qa_badges()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
 begin
-  insert into public.user_badges (user_id, badge_id)
+  insert into public.qa_user_badges (user_id, badge_id)
   select new.id, b.id
-    from public.badges b
+    from public.qa_badges b
    where b.threshold <= new.points
      and not exists (
-       select 1 from public.user_badges ub
+       select 1 from public.qa_user_badges ub
         where ub.user_id = new.id and ub.badge_id = b.id
      );
   return new;
 end;
 $$;
 
--- 注册成功后自动创建 profiles 记录
+-- 注册成功后自动创建 qa_profiles 记录
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -260,9 +260,9 @@ begin
   end if;
 
   begin
-    insert into public.profiles (id, username) values (new.id, base_name);
+    insert into public.qa_profiles (id, username) values (new.id, base_name);
   exception when unique_violation then
-    insert into public.profiles (id, username)
+    insert into public.qa_profiles (id, username)
     values (new.id, base_name || '_' || left(new.id::text, 4));
   end;
 
@@ -295,17 +295,17 @@ declare
   v_title  text;
 begin
   select q.author_id, q.title into v_author, v_title
-    from public.questions q
+    from public.qa_questions q
    where q.id = new.question_id;
 
   perform public.award_points(new.author_id, 10);
 
-  update public.questions
+  update public.qa_questions
      set answer_count = answer_count + 1
    where id = new.question_id;
 
   if v_author is distinct from new.author_id then
-    insert into public.notifications (user_id, actor_id, type, question_id, answer_id, content)
+    insert into public.qa_notifications (user_id, actor_id, type, question_id, answer_id, content)
     values (v_author, new.author_id, 'new_answer', new.question_id, new.id,
             '你的问题《' || v_title || '》收到了新回答');
   end if;
@@ -327,17 +327,17 @@ begin
   if new.is_accepted and not old.is_accepted then
     perform public.award_points(new.author_id, 30);
 
-    update public.questions
+    update public.qa_questions
        set accepted_answer_id = new.id,
            is_solved = true
      where id = new.question_id;
 
     select q.author_id into v_question_author
-      from public.questions q
+      from public.qa_questions q
      where q.id = new.question_id;
 
     if v_question_author is distinct from new.author_id then
-      insert into public.notifications (user_id, actor_id, type, question_id, answer_id, content)
+      insert into public.qa_notifications (user_id, actor_id, type, question_id, answer_id, content)
       values (new.author_id, v_question_author, 'accept', new.question_id, new.id,
               '你的回答被采纳为最佳答案');
     end if;
@@ -355,18 +355,18 @@ security definer
 set search_path = public
 as $$
 begin
-  update public.questions
+  update public.qa_questions
      set answer_count = greatest(answer_count - 1, 0)
    where id = old.question_id;
 
   if old.is_accepted then
-    update public.questions
+    update public.qa_questions
        set accepted_answer_id = null,
            is_solved = false
      where id = old.question_id;
   end if;
 
-  delete from public.votes
+  delete from public.qa_votes
    where target_type = 'answer' and target_id = old.id;
 
   return old;
@@ -381,7 +381,7 @@ security definer
 set search_path = public
 as $$
 begin
-  delete from public.votes
+  delete from public.qa_votes
    where target_type = 'question' and target_id = old.id;
   return old;
 end;
@@ -402,7 +402,7 @@ declare
 begin
   if new.target_type = 'question' then
     select q.author_id, q.title into v_author, v_title
-      from public.questions q
+      from public.qa_questions q
      where q.id = new.target_id;
 
     if v_author is null then
@@ -412,18 +412,18 @@ begin
       raise exception '不能给自己的内容点赞';
     end if;
 
-    update public.questions
+    update public.qa_questions
        set vote_count = vote_count + 1
      where id = new.target_id;
 
     v_points := 5;
 
-    insert into public.notifications (user_id, actor_id, type, question_id, content)
+    insert into public.qa_notifications (user_id, actor_id, type, question_id, content)
     values (v_author, new.user_id, 'vote', new.target_id,
             '你的问题《' || v_title || '》收到了一个赞');
   else
     select a.author_id, a.question_id into v_author, v_question_id
-      from public.answers a
+      from public.qa_answers a
      where a.id = new.target_id;
 
     if v_author is null then
@@ -433,13 +433,13 @@ begin
       raise exception '不能给自己的内容点赞';
     end if;
 
-    update public.answers
+    update public.qa_answers
        set vote_count = vote_count + 1
      where id = new.target_id;
 
     v_points := 10;
 
-    insert into public.notifications (user_id, actor_id, type, question_id, answer_id, content)
+    insert into public.qa_notifications (user_id, actor_id, type, question_id, answer_id, content)
     values (v_author, new.user_id, 'vote', v_question_id, new.target_id,
             '你的回答收到了一个赞');
   end if;
@@ -462,20 +462,20 @@ declare
 begin
   if old.target_type = 'question' then
     select q.author_id into v_author
-      from public.questions q
+      from public.qa_questions q
      where q.id = old.target_id;
 
-    update public.questions
+    update public.qa_questions
        set vote_count = greatest(vote_count - 1, 0)
      where id = old.target_id;
 
     v_points := 5;
   else
     select a.author_id into v_author
-      from public.answers a
+      from public.qa_answers a
      where a.id = old.target_id;
 
-    update public.answers
+    update public.qa_answers
        set vote_count = greatest(vote_count - 1, 0)
      where id = old.target_id;
 
@@ -502,7 +502,7 @@ declare
 begin
   if new.parent_id is not null then
     select c.answer_id into v_answer_id
-      from public.comments c
+      from public.qa_comments c
      where c.id = new.parent_id;
 
     if v_answer_id is null or v_answer_id <> new.answer_id then
@@ -522,7 +522,7 @@ security definer
 set search_path = public
 as $$
 begin
-  update public.questions
+  update public.qa_questions
      set view_count = view_count + 1
    where id = question_id;
 end;
@@ -536,20 +536,20 @@ security definer
 set search_path = public
 as $$
 declare
-  v_answer   public.answers;
-  v_question public.questions;
+  v_answer   public.qa_answers;
+  v_question public.qa_questions;
 begin
   if auth.uid() is null then
     raise exception '请先登录';
   end if;
 
-  select * into v_answer from public.answers where id = answer_id;
+  select * into v_answer from public.qa_answers where id = answer_id;
 
   if not found then
     raise exception '回答不存在';
   end if;
 
-  select * into v_question from public.questions where id = v_answer.question_id;
+  select * into v_question from public.qa_questions where id = v_answer.question_id;
 
   if v_question.author_id <> auth.uid() then
     raise exception '只有提问者才能采纳答案';
@@ -559,7 +559,7 @@ begin
     raise exception '该问题已采纳最佳答案';
   end if;
 
-  update public.answers
+  update public.qa_answers
      set is_accepted = true
    where id = answer_id;
 end;
@@ -574,7 +574,7 @@ security definer
 set search_path = public
 as $$
   select t.tag, count(*)::bigint as question_count
-    from public.questions q
+    from public.qa_questions q
     cross join lateral jsonb_array_elements_text(q.tags) as t(tag)
    group by t.tag
    order by 2 desc, 1 asc;
@@ -584,19 +584,19 @@ $$;
 -- 四、触发器
 -- =====================================================================
 
-drop trigger if exists profiles_set_updated_at on public.profiles;
-create trigger profiles_set_updated_at
-before update on public.profiles
+drop trigger if exists qa_profiles_set_updated_at on public.qa_profiles;
+create trigger qa_profiles_set_updated_at
+before update on public.qa_profiles
 for each row execute function public.set_updated_at();
 
-drop trigger if exists questions_set_updated_at on public.questions;
-create trigger questions_set_updated_at
-before update on public.questions
+drop trigger if exists qa_questions_set_updated_at on public.qa_questions;
+create trigger qa_questions_set_updated_at
+before update on public.qa_questions
 for each row execute function public.set_updated_at();
 
-drop trigger if exists answers_set_updated_at on public.answers;
-create trigger answers_set_updated_at
-before update on public.answers
+drop trigger if exists qa_answers_set_updated_at on public.qa_answers;
+create trigger qa_answers_set_updated_at
+before update on public.qa_answers
 for each row execute function public.set_updated_at();
 
 drop trigger if exists on_auth_user_created on auth.users;
@@ -604,49 +604,49 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
 
-drop trigger if exists profiles_unlock_badges on public.profiles;
-create trigger profiles_unlock_badges
-after insert or update of points on public.profiles
-for each row execute function public.unlock_badges();
+drop trigger if exists qa_profiles_unlock_qa_badges on public.qa_profiles;
+create trigger qa_profiles_unlock_qa_badges
+after insert or update of points on public.qa_profiles
+for each row execute function public.unlock_qa_badges();
 
-drop trigger if exists questions_on_created on public.questions;
-create trigger questions_on_created
-after insert on public.questions
+drop trigger if exists qa_questions_on_created on public.qa_questions;
+create trigger qa_questions_on_created
+after insert on public.qa_questions
 for each row execute function public.on_question_created();
 
-drop trigger if exists questions_on_deleted on public.questions;
-create trigger questions_on_deleted
-after delete on public.questions
+drop trigger if exists qa_questions_on_deleted on public.qa_questions;
+create trigger qa_questions_on_deleted
+after delete on public.qa_questions
 for each row execute function public.on_question_deleted();
 
-drop trigger if exists answers_on_created on public.answers;
-create trigger answers_on_created
-after insert on public.answers
+drop trigger if exists qa_answers_on_created on public.qa_answers;
+create trigger qa_answers_on_created
+after insert on public.qa_answers
 for each row execute function public.on_answer_created();
 
-drop trigger if exists answers_on_accepted on public.answers;
-create trigger answers_on_accepted
-after update of is_accepted on public.answers
+drop trigger if exists qa_answers_on_accepted on public.qa_answers;
+create trigger qa_answers_on_accepted
+after update of is_accepted on public.qa_answers
 for each row execute function public.on_answer_accepted();
 
-drop trigger if exists answers_on_deleted on public.answers;
-create trigger answers_on_deleted
-after delete on public.answers
+drop trigger if exists qa_answers_on_deleted on public.qa_answers;
+create trigger qa_answers_on_deleted
+after delete on public.qa_answers
 for each row execute function public.on_answer_deleted();
 
-drop trigger if exists votes_on_created on public.votes;
-create trigger votes_on_created
-after insert on public.votes
+drop trigger if exists qa_votes_on_created on public.qa_votes;
+create trigger qa_votes_on_created
+after insert on public.qa_votes
 for each row execute function public.on_vote_created();
 
-drop trigger if exists votes_on_deleted on public.votes;
-create trigger votes_on_deleted
-after delete on public.votes
+drop trigger if exists qa_votes_on_deleted on public.qa_votes;
+create trigger qa_votes_on_deleted
+after delete on public.qa_votes
 for each row execute function public.on_vote_deleted();
 
-drop trigger if exists comments_validate_parent on public.comments;
-create trigger comments_validate_parent
-before insert on public.comments
+drop trigger if exists qa_comments_validate_parent on public.qa_comments;
+create trigger qa_comments_validate_parent
+before insert on public.qa_comments
 for each row execute function public.validate_comment_parent();
 
 -- =====================================================================
@@ -655,196 +655,196 @@ for each row execute function public.validate_comment_parent();
 
 grant usage on schema public to anon, authenticated;
 
--- ---- profiles ----
-revoke all on public.profiles from anon, authenticated;
-grant select on public.profiles to anon, authenticated;
-grant update (username, avatar_url, bio) on public.profiles to authenticated;
+-- ---- qa_profiles ----
+revoke all on public.qa_profiles from anon, authenticated;
+grant select on public.qa_profiles to anon, authenticated;
+grant update (username, avatar_url, bio) on public.qa_profiles to authenticated;
 
-alter table public.profiles enable row level security;
+alter table public.qa_profiles enable row level security;
 
-create policy "profiles_select_all"
-  on public.profiles for select
+create policy "qa_profiles_select_all"
+  on public.qa_profiles for select
   to anon, authenticated
   using (true);
 
-create policy "profiles_update_self"
-  on public.profiles for update
+create policy "qa_profiles_update_self"
+  on public.qa_profiles for update
   to authenticated
   using (id = auth.uid())
   with check (id = auth.uid());
 
--- ---- questions ----
-revoke all on public.questions from anon, authenticated;
-grant select on public.questions to anon, authenticated;
-grant insert, delete on public.questions to authenticated;
-grant update (title, content, tags) on public.questions to authenticated;
+-- ---- qa_questions ----
+revoke all on public.qa_questions from anon, authenticated;
+grant select on public.qa_questions to anon, authenticated;
+grant insert, delete on public.qa_questions to authenticated;
+grant update (title, content, tags) on public.qa_questions to authenticated;
 
-alter table public.questions enable row level security;
+alter table public.qa_questions enable row level security;
 
-create policy "questions_select_all"
-  on public.questions for select
+create policy "qa_questions_select_all"
+  on public.qa_questions for select
   to anon, authenticated
   using (true);
 
-create policy "questions_insert_auth"
-  on public.questions for insert
+create policy "qa_questions_insert_auth"
+  on public.qa_questions for insert
   to authenticated
   with check (author_id = auth.uid());
 
-create policy "questions_update_own"
-  on public.questions for update
+create policy "qa_questions_update_own"
+  on public.qa_questions for update
   to authenticated
   using (author_id = auth.uid())
   with check (author_id = auth.uid());
 
-create policy "questions_delete_own"
-  on public.questions for delete
+create policy "qa_questions_delete_own"
+  on public.qa_questions for delete
   to authenticated
   using (author_id = auth.uid());
 
--- ---- answers ----
-revoke all on public.answers from anon, authenticated;
-grant select on public.answers to anon, authenticated;
-grant insert, delete on public.answers to authenticated;
-grant update (content) on public.answers to authenticated;
+-- ---- qa_answers ----
+revoke all on public.qa_answers from anon, authenticated;
+grant select on public.qa_answers to anon, authenticated;
+grant insert, delete on public.qa_answers to authenticated;
+grant update (content) on public.qa_answers to authenticated;
 
-alter table public.answers enable row level security;
+alter table public.qa_answers enable row level security;
 
-create policy "answers_select_all"
-  on public.answers for select
+create policy "qa_answers_select_all"
+  on public.qa_answers for select
   to anon, authenticated
   using (true);
 
-create policy "answers_insert_auth"
-  on public.answers for insert
+create policy "qa_answers_insert_auth"
+  on public.qa_answers for insert
   to authenticated
   with check (author_id = auth.uid());
 
-create policy "answers_update_own"
-  on public.answers for update
+create policy "qa_answers_update_own"
+  on public.qa_answers for update
   to authenticated
   using (author_id = auth.uid())
   with check (author_id = auth.uid());
 
-create policy "answers_delete_own"
-  on public.answers for delete
+create policy "qa_answers_delete_own"
+  on public.qa_answers for delete
   to authenticated
   using (author_id = auth.uid());
 
--- ---- votes ----
-revoke all on public.votes from anon, authenticated;
-grant select, insert, delete on public.votes to authenticated;
+-- ---- qa_votes ----
+revoke all on public.qa_votes from anon, authenticated;
+grant select, insert, delete on public.qa_votes to authenticated;
 
-alter table public.votes enable row level security;
+alter table public.qa_votes enable row level security;
 
-create policy "votes_select_auth"
-  on public.votes for select
+create policy "qa_votes_select_auth"
+  on public.qa_votes for select
   to authenticated
   using (true);
 
-create policy "votes_insert_own"
-  on public.votes for insert
+create policy "qa_votes_insert_own"
+  on public.qa_votes for insert
   to authenticated
   with check (user_id = auth.uid());
 
-create policy "votes_delete_own"
-  on public.votes for delete
+create policy "qa_votes_delete_own"
+  on public.qa_votes for delete
   to authenticated
   using (user_id = auth.uid());
 
--- ---- comments ----
-revoke all on public.comments from anon, authenticated;
-grant select on public.comments to anon, authenticated;
-grant insert, delete on public.comments to authenticated;
-grant update (content) on public.comments to authenticated;
+-- ---- qa_comments ----
+revoke all on public.qa_comments from anon, authenticated;
+grant select on public.qa_comments to anon, authenticated;
+grant insert, delete on public.qa_comments to authenticated;
+grant update (content) on public.qa_comments to authenticated;
 
-alter table public.comments enable row level security;
+alter table public.qa_comments enable row level security;
 
-create policy "comments_select_all"
-  on public.comments for select
+create policy "qa_comments_select_all"
+  on public.qa_comments for select
   to anon, authenticated
   using (true);
 
-create policy "comments_insert_auth"
-  on public.comments for insert
+create policy "qa_comments_insert_auth"
+  on public.qa_comments for insert
   to authenticated
   with check (author_id = auth.uid());
 
-create policy "comments_update_own"
-  on public.comments for update
+create policy "qa_comments_update_own"
+  on public.qa_comments for update
   to authenticated
   using (author_id = auth.uid())
   with check (author_id = auth.uid());
 
-create policy "comments_delete_own"
-  on public.comments for delete
+create policy "qa_comments_delete_own"
+  on public.qa_comments for delete
   to authenticated
   using (author_id = auth.uid());
 
--- ---- follows ----
-revoke all on public.follows from anon, authenticated;
-grant select on public.follows to anon, authenticated;
-grant insert, delete on public.follows to authenticated;
+-- ---- qa_follows ----
+revoke all on public.qa_follows from anon, authenticated;
+grant select on public.qa_follows to anon, authenticated;
+grant insert, delete on public.qa_follows to authenticated;
 
-alter table public.follows enable row level security;
+alter table public.qa_follows enable row level security;
 
-create policy "follows_select_all"
-  on public.follows for select
+create policy "qa_follows_select_all"
+  on public.qa_follows for select
   to anon, authenticated
   using (true);
 
-create policy "follows_insert_own"
-  on public.follows for insert
+create policy "qa_follows_insert_own"
+  on public.qa_follows for insert
   to authenticated
   with check (follower_id = auth.uid() and following_id <> auth.uid());
 
-create policy "follows_delete_own"
-  on public.follows for delete
+create policy "qa_follows_delete_own"
+  on public.qa_follows for delete
   to authenticated
   using (follower_id = auth.uid());
 
--- ---- notifications ----
-revoke all on public.notifications from anon, authenticated;
-grant select, delete on public.notifications to authenticated;
-grant update (is_read) on public.notifications to authenticated;
+-- ---- qa_notifications ----
+revoke all on public.qa_notifications from anon, authenticated;
+grant select, delete on public.qa_notifications to authenticated;
+grant update (is_read) on public.qa_notifications to authenticated;
 
-alter table public.notifications enable row level security;
+alter table public.qa_notifications enable row level security;
 
-create policy "notifications_select_own"
-  on public.notifications for select
+create policy "qa_notifications_select_own"
+  on public.qa_notifications for select
   to authenticated
   using (user_id = auth.uid());
 
-create policy "notifications_update_own"
-  on public.notifications for update
+create policy "qa_notifications_update_own"
+  on public.qa_notifications for update
   to authenticated
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
-create policy "notifications_delete_own"
-  on public.notifications for delete
+create policy "qa_notifications_delete_own"
+  on public.qa_notifications for delete
   to authenticated
   using (user_id = auth.uid());
 
--- ---- badges ----
-revoke all on public.badges from anon, authenticated;
-grant select on public.badges to anon, authenticated;
+-- ---- qa_badges ----
+revoke all on public.qa_badges from anon, authenticated;
+grant select on public.qa_badges to anon, authenticated;
 
-alter table public.badges enable row level security;
+alter table public.qa_badges enable row level security;
 
-create policy "badges_select_all"
-  on public.badges for select
+create policy "qa_badges_select_all"
+  on public.qa_badges for select
   to anon, authenticated
   using (true);
 
--- ---- user_badges ----
-revoke all on public.user_badges from anon, authenticated;
-grant select on public.user_badges to anon, authenticated;
+-- ---- qa_user_badges ----
+revoke all on public.qa_user_badges from anon, authenticated;
+grant select on public.qa_user_badges to anon, authenticated;
 
-alter table public.user_badges enable row level security;
+alter table public.qa_user_badges enable row level security;
 
-create policy "user_badges_select_all"
-  on public.user_badges for select
+create policy "qa_user_badges_select_all"
+  on public.qa_user_badges for select
   to anon, authenticated
   using (true);
 
@@ -854,7 +854,7 @@ create policy "user_badges_select_all"
 
 revoke execute on function public.set_updated_at() from public, anon, authenticated;
 revoke execute on function public.award_points(uuid, integer) from public, anon, authenticated;
-revoke execute on function public.unlock_badges() from public, anon, authenticated;
+revoke execute on function public.unlock_qa_badges() from public, anon, authenticated;
 revoke execute on function public.handle_new_user() from public, anon, authenticated;
 revoke execute on function public.on_question_created() from public, anon, authenticated;
 revoke execute on function public.on_answer_created() from public, anon, authenticated;
@@ -875,7 +875,7 @@ grant execute on function public.get_all_tags() to anon, authenticated;
 -- 七、徽章种子数据
 -- =====================================================================
 
-insert into public.badges (code, name, description, icon, threshold, sort_order)
+insert into public.qa_badges (code, name, description, icon, threshold, sort_order)
 values
   ('seedling', '初出茅庐', '完成注册，正式加入社区', '🌱', 0,    1),
   ('rising',   '崭露头角', '累计获得 50 积分',           '🌿', 50,   2),
@@ -884,13 +884,13 @@ values
   ('master',   '社区大师', '累计获得 1000 积分',         '🏆', 1000, 5)
 on conflict (code) do nothing;
 
--- 为脚本执行前已存在的 auth 用户补建 profiles（全新项目可忽略）
-insert into public.profiles (id, username)
+-- 为脚本执行前已存在的 auth 用户补建 qa_profiles（全新项目可忽略）
+insert into public.qa_profiles (id, username)
 select u.id,
        left(coalesce(nullif(split_part(coalesce(u.email, ''), '@', 1), ''), 'user'), 24)
        || '_' || left(u.id::text, 4)
   from auth.users u
- where not exists (select 1 from public.profiles p where p.id = u.id)
+ where not exists (select 1 from public.qa_profiles p where p.id = u.id)
 on conflict do nothing;
 
 -- =====================================================================

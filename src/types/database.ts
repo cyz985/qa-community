@@ -3,7 +3,7 @@
  * 阶段1 文档：database.md
  */
 
-// ---- profiles 用户资料 ----
+// ---- qa_profiles 用户资料 ----
 export interface Profile {
   id: string;
   username: string;
@@ -14,7 +14,7 @@ export interface Profile {
   updated_at: string;
 }
 
-// ---- questions 问题 ----
+// ---- qa_questions 问题 ----
 export interface Question {
   id: string;
   author_id: string;
@@ -33,7 +33,7 @@ export interface Question {
   author?: Profile;
 }
 
-// ---- answers 回答 ----
+// ---- qa_answers 回答 ----
 export interface Answer {
   id: string;
   question_id: string;
@@ -46,7 +46,7 @@ export interface Answer {
   author?: Profile;
 }
 
-// ---- votes 点赞 ----
+// ---- qa_votes 点赞 ----
 export type VoteTargetType = 'question' | 'answer';
 
 export interface Vote {
@@ -57,7 +57,7 @@ export interface Vote {
   created_at: string;
 }
 
-// ---- comments 子评论 ----
+// ---- qa_comments 子评论 ----
 export interface Comment {
   id: string;
   answer_id: string;
@@ -68,14 +68,14 @@ export interface Comment {
   author?: Profile;
 }
 
-// ---- follows 关注 ----
+// ---- qa_follows 关注 ----
 export interface Follow {
   follower_id: string;
   following_id: string;
   created_at: string;
 }
 
-// ---- notifications 通知 ----
+// ---- qa_notifications 通知 ----
 export type NotificationType = 'new_answer' | 'accept' | 'vote';
 
 export interface Notification {
@@ -91,7 +91,7 @@ export interface Notification {
   actor?: Profile;
 }
 
-// ---- badges 徽章 ----
+// ---- qa_badges 徽章 ----
 export interface Badge {
   id: string;
   code: string;
